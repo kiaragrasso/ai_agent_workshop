@@ -71,8 +71,11 @@ fails, look there first.
 
 ## Code
 
-- Prefer streaming I/O. Read line by line, write as you go. `sort` is the one
-  command allowed to hold a chromosome in memory.
+- Prefer streaming I/O. Read line by line, write as you go — but see `SPEC.md` §6 for
+  what each command can actually stream. `sort` holds the **whole input** in memory: a
+  per-chromosome buffer is wrong, because bedtools sorts chromosome-interleaved input
+  correctly and `a.bed`/`b.bed` are chrom-grouped, so the golden tests will not catch
+  it. `intersect` and `subtract` hold `-b` resident and stream `-a`.
 - Read from a file argument or stdin (`-` means stdin).
 - Errors go to stderr, never stdout — stdout is data and gets piped.
 - Exit codes: `0` success, `1` bad input data, `2` usage error.
