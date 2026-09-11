@@ -5,7 +5,11 @@
 #        MYTOOLS=/path/to/other/mytools ./tests/run_golden.sh
 #
 # To test the harness rather than the code:  MYTOOLS=$(command -v bedtools) ./tests/run_golden.sh
-# That must report every case passing. If it does not, the bug is in here.
+# Every check()/check_stdin() case must pass under that, since it compares bedtools
+# with itself. If one does not, the bug is in here. The check_rc() cases are the
+# exception: they are graded against SPEC.md rather than the oracle and bedtools fails
+# them by design -- it exits 1 where SPEC.md §7 says 2, and accepts two flag
+# combinations SPEC.md §5 forbids. See SPEC.md §8.
 #
 # mytools is resolved from the repo this script lives in, never from PATH. There is a
 # ~/.local/bin/mytools symlink pointing at one particular clone, and several copies of
@@ -55,6 +59,27 @@ check() {
   report "$name" "$got_rc" "$want_rc"
 }
 
+# check_rc <name> <want_rc> -- <args...>
+#   asserts mytools' own exit code, with no oracle comparison. For cases where SPEC.md
+#   and bedtools genuinely disagree: SPEC.md §7 makes every caller error a 2, while
+#   bedtools exits 1 (or 0, where it accepts a combination we reject). See SPEC.md §8.
+#   stdout must also be empty -- errors go to stderr, stdout is data (CLAUDE.md).
+check_rc() {
+  local name=$1 want_rc=$2; shift 3
+  "$MYTOOLS" "$@" >"$tmp/got" 2>"$tmp/got.err"; local got_rc=$?
+  if [[ $got_rc -ne $want_rc ]]; then
+    echo "FAIL $name (exit $got_rc, wanted $want_rc)"
+    sed 's/^/      /' "$tmp/got.err" | head -3
+    (( fail++ )); return 0
+  fi
+  if [[ -s $tmp/got ]]; then
+    echo "FAIL $name (exit $got_rc as wanted, but stdout was not empty)"
+    sed 's/^/      /' "$tmp/got" | head -3
+    (( fail++ )); return 0
+  fi
+  echo "ok   $name"; (( pass++ )); return 0
+}
+
 # check_stdin <name> <file> -- <args...>
 #   same, but feeds <file> on stdin to both. Use with `-i -` or `-a -`.
 check_stdin() {
@@ -87,6 +112,16 @@ check "intersect -u a b"   -- intersect -u  -a "$DATA/a.bed" -b "$DATA/b.bed"
 check "intersect -v a b"   -- intersect -v  -a "$DATA/a.bed" -b "$DATA/b.bed"
 check "intersect -wa a b"  -- intersect -wa -a "$DATA/a.bed" -b "$DATA/b.bed"
 check_stdin "intersect stdin" "$DATA/a.bed" -- intersect -a - -b "$DATA/b.bed"
+
+# Mutually exclusive flags. Not run through check(): SPEC.md §5 makes all three
+# exclusive and §7 makes that a 2, whereas bedtools rejects only -u with -v (exit 1)
+# and quietly accepts -u -wa and -v -wa. Graded against the spec, not the oracle.
+check_rc "intersect -u -v rejected"   2 -- intersect -u -v  -a "$DATA/a.bed" -b "$DATA/b.bed"
+check_rc "intersect -u -wa rejected"  2 -- intersect -u -wa -a "$DATA/a.bed" -b "$DATA/b.bed"
+check_rc "intersect -v -wa rejected"  2 -- intersect -v -wa -a "$DATA/a.bed" -b "$DATA/b.bed"
+check_rc "intersect missing -b"       2 -- intersect -a "$DATA/a.bed"
+check_rc "intersect missing -a"       2 -- intersect -b "$DATA/b.bed"
+check_rc "intersect -b does not exist" 2 -- intersect -a "$DATA/a.bed" -b "$DATA/nope.bed"
 
 # No swapped-argument case (-a b.bed -b a.bed). bedtools cannot use a.bed as -b: the
 # zero-length interval at coordinate 0 (a12, "chr2 0 0") makes its tree build die with
