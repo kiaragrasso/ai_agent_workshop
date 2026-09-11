@@ -1,0 +1,22 @@
+#!/usr/bin/env Rscript
+
+# mytools — a small reimplementation of a subset of bedtools.
+# No subcommands yet; --version only.
+
+VERSION <- "0.1.0"
+
+usage <- function() {
+  # Usage goes to stderr: stdout carries data only, because it gets piped.
+  cat("usage: mytools --version\n", file = stderr())
+}
+
+main <- function(args) {
+  if (length(args) == 1 && args[1] == "--version") {
+    cat(sprintf("mytools %s\n", VERSION))
+    return(0)
+  }
+  usage()
+  2
+}
+
+quit(save = "no", status = main(commandArgs(trailingOnly = TRUE)))
