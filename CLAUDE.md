@@ -55,6 +55,11 @@ fails, look there first.
 - `./tests/run_golden.sh` diffs every subcommand against real bedtools on `data/`.
   It does not exist yet — `tests/README.md` has the worked example to build it from.
 - **Run it before every commit.** It takes seconds; there is no excuse.
+- **Tests run the `mytools` sitting next to them, never the one on `PATH`.** Every test
+  script resolves its own directory and uses the `mytools` in that repo root. There is a
+  `~/.local/bin/mytools` symlink pointing at one particular clone, and several copies of
+  this repo exist when agents work in parallel — a test that trusts bare `mytools`
+  grades a different branch than the one it is sitting in, and still exits 0.
 - Fixtures are `data/a.bed`, `data/b.bed` (edge cases) and `data/genes.bed`.
   Do not regenerate or "tidy" them — the edge cases are deliberate.
 - New subcommand or flag? Add its golden case in the same commit.
