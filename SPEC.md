@@ -117,8 +117,34 @@ to its bedtools equivalent on the files in `data/`:
 
 Also required: `mytools --version` prints a version and exits 0.
 
-Accepted deviations from bedtools: none. If you find one you cannot fix, write it
-down here with the reason.
+Accepted deviations from bedtools, found while implementing `intersect` (#7):
+
+1. **Usage errors exit 2, bedtools exits 1.** §7 of this spec assigns caller errors
+   their own code and data errors 1; bedtools uses 1 for both. Deliberate, and the
+   reason `tests/run_golden.sh` grades those cases with `check_rc` against the spec
+   instead of against the oracle.
+
+2. **`-u -wa` and `-v -wa` are rejected; bedtools accepts them.** §5 makes all three
+   output modes mutually exclusive. bedtools rejects only `-u` with `-v` (exit 1) and
+   silently lets the other two pairs through. Ours is the stricter reading and the
+   one §5 states, so it stands.
+
+3. **Hit order follows `-b` file order; bedtools follows its bin tree.** bedtools
+   stores `-b` in a UCSC bin index and walks bins smallest level first, emitting
+   insertion order within a bin. Every interval in `data/` is under 128kb and so lands
+   in one bin, making that identical to file order — which is what `intersect`
+   reproduces, and it is visible on `a02`, where `b03` (start 180) is emitted before
+   `b02` (start 100). The two orders part company once `-b` spreads across more than
+   one bin — either far apart (a 1bp feature at 50,000,000 emits after one at 100,
+   whatever the file order) or because a feature straddling a bin boundary is
+   promoted to a coarser level than its neighbours, which happens with short
+   intervals too. Measured on 200k `-a` against 500k `-b` at whole-chromosome
+   coordinates: the same 22,795 rows, the same multiset, 31 of them (1.4 per 1,000)
+   emitted in a different order within a single `-a` feature. Never any difference
+   in *which* features are reported. Not reproduced: matching it means porting the
+   bin scheme, which buys nothing at BED sizes and no golden test on `data/` sees it.
+
+If you find another you cannot fix, write it down here with the reason.
 
 ## 9. Language and layout
 
