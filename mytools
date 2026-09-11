@@ -1,22 +1,74 @@
 #!/usr/bin/env Rscript
 
 # mytools — a small reimplementation of a subset of bedtools.
-# No subcommands yet; --version only.
+#
+# Subcommand dispatch and nothing else. The shared BED reader, the overlap predicate and
+# the exit-code contract live in R/bed.R; each subcommand lives in its own file under R/.
 
 VERSION <- "0.1.0"
 
-usage <- function() {
-  # Usage goes to stderr: stdout carries data only, because it gets piped.
-  cat("usage: mytools --version\n", file = stderr())
+# Where this script lives, so R/ can be found however mytools was invoked -- directly,
+# through a symlink on PATH, or from another directory.
+script_dir <- function() {
+  args <- commandArgs(trailingOnly = FALSE)
+  f <- grep("^--file=", args, value = TRUE)
+  if (length(f) == 0L) return(getwd())
+  dirname(normalizePath(sub("^--file=", "", f[1L])))
 }
 
-main <- function(args) {
-  if (length(args) == 1 && args[1] == "--version") {
-    cat(sprintf("mytools %s\n", VERSION))
-    return(0)
+ROOT <- script_dir()
+source(file.path(ROOT, "R", "bed.R"))
+
+usage <- function() {
+  # stderr, not stdout: stdout is data and gets piped (CLAUDE.md).
+  cat("usage: mytools <subcommand> [options]\n",
+      "\n",
+      "subcommands:\n",
+      "  sort       -i <file|->\n",
+      "  merge      -i <file|-> [-d N]\n",
+      "  intersect  -a <file|-> -b <file> [-u | -v | -wa]\n",
+      "  subtract   -a <file|-> -b <file>\n",
+      "\n",
+      "  --version  print version and exit\n",
+      sep = "", file = stderr())
+}
+
+# Subcommands are sourced on demand, so an unimplemented one is a clean usage error
+# rather than a missing-file crash.
+dispatch <- function(subcommand, args) {
+  path <- file.path(ROOT, "R", paste0(subcommand, ".R"))
+  if (!file.exists(path)) {
+    usage()
+    return(EXIT_USAGE)
   }
-  usage()
-  2
+  source(path, local = TRUE)
+  run_guarded(function() cmd_main(args))
+}
+
+main <- function(argv) {
+  if (length(argv) == 0L) {
+    usage()
+    return(EXIT_USAGE)
+  }
+
+  if (length(argv) == 1L && argv[1L] == "--version") {
+    cat(sprintf("mytools %s\n", VERSION))
+    return(EXIT_OK)
+  }
+
+  if (argv[1L] %in% c("-h", "--help")) {
+    usage()
+    return(EXIT_OK)   # --help is a success (SPEC.md §7)
+  }
+
+  known <- c("sort", "merge", "intersect", "subtract")
+  if (!(argv[1L] %in% known)) {
+    cat(sprintf("unknown subcommand: %s\n", argv[1L]), file = stderr())
+    usage()
+    return(EXIT_USAGE)
+  }
+
+  dispatch(argv[1L], argv[-1L])
 }
 
 quit(save = "no", status = main(commandArgs(trailingOnly = TRUE)))
